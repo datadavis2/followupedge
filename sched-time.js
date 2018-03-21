@@ -1,5 +1,5 @@
   // import moment.js && underscore.js
-  var moment = require('moment');
+  var moment = require('moment-timezone');
   var _und = require("underscore@1.8.3");
 
 /**
@@ -7,50 +7,78 @@
 */
 module.exports = function(context, cb) {
   
-  // set variables for calculations
+  // set the base time of when the prospect is created -- schedule today or tomorrow?
+  var maxDelay = parseInt(context.query.dayMaxDelay);
+  var createdAt = parseInt(context.query.startTime); // prospect creation date
+  var inTime = createdAt + maxDelay;
+  
   var eventDelta = parseInt(context.query.delta);
-  var createdAt = parseInt(context.query.startTime);
-  var inTime = createdAt + eventDelta;
-  var offSet = parseInt(context.query.offSet.substring(0,context.query.offSet.search(":")));
-  var win_open = parseInt(context.query.lowerLimit.substring(0, 2)) - offSet;
-  var win_close = parseInt(context.query.upperLimit.substring(0, 2)) - offSet; 
+  var imm = createdAt + eventDelta;
   
-  // create date object
-  var convBase = moment.utc(createdAt)
-  var conv = moment.utc(inTime);
+  var now = moment();
   
-  var msInOneDay = 86400000;
-  var dayDelay = Math.ceil(eventDelta / msInOneDay);
+  var win_open = parseInt(context.query.lowerLimit.substring(0, 2));
+  var win_close = parseInt(context.query.upperLimit.substring(0, 2)); 
+  var timeZone = context.query.timezoneID;
+  var elemType = context.query.elemType;
   
-  // determine the number of milliseconds to delay based on size of delta value
-  function msCalc(ms) {
-    if (eventDelta < (msInOneDay*(win_close-win_open)/24)) {
-      set_ms = eventDelta;
-      return set_ms;
-    } else  {
-        set_ms = _und.random(60000,900000);
-        return set_ms;
+  var addDay = parseInt(context.query.dayOffset);
+  var addHour = parseInt(context.query.hourToSend);
+  var addMin = parseInt(context.query.minToSend);
+  
+  var sendWeekends = parseInt(context.query.sendWeekends);
+  
+  var inTimeMoment = moment(inTime);
+  var inDOW = inTimeMoment.isoWeekday();
+  
+  var winOpenMoment = moment.tz([inTimeMoment.year(), inTimeMoment.month(), inTimeMoment.date(), win_open], timeZone);
+  var winCloseMoment = moment.tz([inTimeMoment.year(), inTimeMoment.month(), inTimeMoment.date(), win_close], timeZone);
+  
+  console.log(moment.utc(imm).format('x'));
+  function schedule(type) {
+    
+    if (elemType === 'immediate') { // schedule immediate events
+    
+      if (winOpenMoment.format('x') < inTimeMoment.format('x') && inTimeMoment.format('x') < winCloseMoment.format('x')) {
+        sched_time = moment.utc(imm).add({seconds:7});
+        return sched_time; // send now
+      }
+      
+      else if (winOpenMoment.format('x') > inTimeMoment.format('x')) {
+        sched_time = winOpenMoment.add({milliseconds:eventDelta});
+        return sched_time; // wait until the open window
+      }
+      
+      else {
+        sched_time = winOpenMoment.add({days:1, milliseconds:eventDelta});
+        return sched_time; // wait until tomorrow
+      }
+    }
+    
+    else { // event type delay
+      sched_time = moment.tz([inTimeMoment.year(), inTimeMoment.month(), inTimeMoment.date(), addHour, addMin], timeZone).add({days:addDay});
+      return sched_time;
     }
   }
   
-  // return scheduled time
-  function checkTime(hour) {
-    if (win_open < hour && hour < win_close) {
-      sched_time = conv.add(7, "seconds");
-      return sched_time; // schedules as normal if "in bounds"
-    } 
-    else if (hour < win_open) {
-      baseDate = moment().set({'year': conv.year(), 'month': conv.month(), 'date': conv.date(), 'hour': 0, 'minute': 0, 'second': 0});
-      sched_time = baseDate.add({days:0, hours:win_open, milliseconds:msCalc(eventDelta)});
-      return sched_time; // waits until startTime on given day
+  // handle weekend
+  function acctWeekend() {
+    if (sendWeekends === 1) {
+      return 0;
     }
     else {
-      baseDate = moment().set({'year': convBase.year(), 'month': convBase.month(), 'date': convBase.date(), 'hour': 0, 'minute': 0, 'second': 0});
-      sched_time = baseDate.add({days:dayDelay, hours:win_open, milliseconds:msCalc(eventDelta)});
-      return sched_time; // waits until the window opens on next day
+      if (inDOW !== 6 && inDOW !== 7) {
+        return 0;
+      }
+      else if (inDOW === 6) {
+        return 2;
+      }
+      else {
+        return 1;
+      }
     }
   }
   
   cb(null, { 
-    "scheduleDateTime" : checkTime(conv.hours())  });
+    "scheduleDateTime" : schedule(elemType).add({days:acctWeekend()}).format('x')  });
 };
