@@ -1,5 +1,5 @@
 // used at webtask.io
-// import moment.js && underscore.js
+  // import moment.js && underscore.js
   var moment = require('moment-timezone');
   var _und = require("underscore@1.8.3");
 
@@ -35,7 +35,7 @@ module.exports = function(context, cb) {
   var winOpenMoment = moment.tz([inTimeMoment.year(), inTimeMoment.month(), inTimeMoment.date(), win_open], timeZone);
   var winCloseMoment = moment.tz([inTimeMoment.year(), inTimeMoment.month(), inTimeMoment.date(), win_close], timeZone);
   
-  console.log(moment.utc(imm).format('x'));
+  // console.log(moment.utc(imm).format('x'));
   function schedule(type) {
     
     if (elemType === 'immediate') { // schedule immediate events
@@ -64,19 +64,33 @@ module.exports = function(context, cb) {
   
   // handle weekend
   function acctWeekend() {
-    if (sendWeekends === 1) {
-      return 0;
-    }
-    else {
-      if (inDOW !== 6 && inDOW !== 7) {
+    if (elemType === 'immediate') {
+      if (sendWeekends === 1) {
         return 0;
       }
-      else if (inDOW === 6) {
+      else {
+        if (inDOW !== 6 && inDOW !== 7) {
+          return 0;
+        }
+        else if (inDOW === 6) {
+          return 2;
+        }
+        else {
+          return 1;
+        }
+      }
+    }
+    else { // calc based on delay's sched_time
+      delDOW = sched_time.isoWeekday();
+      if (delDOW !== 6 && delDOW !== 7) {
+        return 0;
+      }
+      else if (delDOW === 6) {
         return 2;
       }
       else {
-        return 1;
-      }
+          return 1;
+        }
     }
   }
   
